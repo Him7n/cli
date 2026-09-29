@@ -14,9 +14,12 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
+
+	"github.com/spf13/cobra"
 
 	"github.com/harness/cli/v3/pkg/auth"
 	"github.com/harness/cli/v3/pkg/cmdctx"
@@ -786,6 +789,49 @@ func TestCallEndpointFull_Priority2_SetFields(t *testing.T) {
 	}
 }
 
+func TestBareSetMemberRequestBody(t *testing.T) {
+	for _, verb := range []string{VerbCreate, VerbUpdate} {
+		for _, input := range []string{"modules.CD", "modules.CD="} {
+			t.Run(verb+"/"+input, func(t *testing.T) {
+				r := New()
+				if err := r.RegisterNoun(spec.NounDef{Noun: "widget", NounAliases: []string{"widgets"}, Fields: []spec.FieldDef{
+					{ID: "modules", Expr: "it.modules", FieldType: "set", MutablePath: "modules"},
+				}}); err != nil {
+					t.Fatal(err)
+				}
+				ep := &spec.EndpointSpec{Path: "/widgets/{{ctx.id}}", Method: "POST", CreateStrategy: spec.CreateStrategySetFields}
+				if verb == VerbUpdate {
+					ep = &spec.EndpointSpec{Path: "/widgets/{{ctx.id}}", Method: "PUT", UpdateStrategy: spec.UpdateStrategyGetThenPut, UpdateBodyPick: "it.data"}
+				}
+				cs := &spec.CommandSpec{Verb: verb, Noun: "widget", HandlerType: spec.HandlerEndpoint,
+					Endpoint: ep, NoAuth: true, BuiltinFlags: spec.BuiltinFlags{Set: true}}
+				cmd := &cobra.Command{Use: "widget"}
+				r.bindEndpointCmdFlags(cmd, cs)
+				cmd.Flags().Float64("timeout", 0, "Command timeout in seconds")
+				if err := cmd.ParseFlags([]string{"widget-id", "--set", input}); err != nil {
+					t.Fatal(err)
+				}
+				ctx, err := buildCtx(cmd, cs, cmd.Flags().Args(), r)
+				if err != nil {
+					t.Fatal(err)
+				}
+				srv, captures := sequenceServer(t, []string{`{"data":{"modules":["CI"]}}`, `{}`})
+				ctx.Auth = testAuth(srv.URL)
+				if _, _, err := callEndpointFull(ctx, ep, nil); err != nil {
+					t.Fatal(err)
+				}
+				want := []any{"CD"}
+				if verb == VerbUpdate {
+					want = []any{"CI", "CD"}
+				}
+				if got := bodyMap(t, (*captures)[len(*captures)-1].body)["modules"]; !reflect.DeepEqual(got, want) {
+					t.Fatalf("modules = %v, want %v", got, want)
+				}
+			})
+		}
+	}
+}
+
 // ---------------------------------------------------------------------------
 // TestCallEndpointFull_Priority3_DefaultDispatch — body_params, body_fn, headers
 // ---------------------------------------------------------------------------
@@ -1320,9 +1366,11 @@ func TestApplyMutations(t *testing.T) {
 	})
 
 	t.Run("set_set_field_no_member_errors", func(t *testing.T) {
-		err := applyMutations(map[string]any{}, map[string]string{"modules": ""}, nil, fields)
-		if err == nil || !strings.Contains(err.Error(), "require a member") {
-			t.Fatalf("err = %v, want require a member", err)
+		for _, key := range []string{"modules", "modules."} {
+			err := applyMutations(map[string]any{}, map[string]string{key: ""}, nil, fields)
+			if err == nil || !strings.Contains(err.Error(), "require a member") {
+				t.Fatalf("--set %s: err = %v, want require a member", key, err)
+			}
 		}
 	})
 

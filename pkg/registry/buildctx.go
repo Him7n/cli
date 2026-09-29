@@ -272,7 +272,7 @@ func buildCtx(cmd *cobra.Command, cs *spec.CommandSpec, args []string, r *Regist
 			ctx.SetArgs = make(map[string]string, len(all))
 			for _, kv := range all {
 				k, v, ok := strings.Cut(kv, "=")
-				if !ok {
+				if !ok && !isBareSetField(k, cs, r) {
 					return nil, fmt.Errorf("invalid value %q: expected key=value format", kv)
 				}
 				ctx.SetArgs[k] = v
@@ -311,6 +311,20 @@ func buildCtx(cmd *cobra.Command, cs *spec.CommandSpec, args []string, r *Regist
 		}
 	}
 	return ctx, nil
+}
+
+func isBareSetField(target string, cs *spec.CommandSpec, r *Registry) bool {
+	fieldID, _, _ := strings.Cut(target, ".")
+	noun := cs.Noun
+	if cs.FieldsNoun != "" {
+		noun = cs.FieldsNoun
+	}
+	for _, field := range MutableFields(r.GetNoun(noun)) {
+		if field.ID == fieldID {
+			return field.FieldType == "set"
+		}
+	}
+	return false
 }
 
 // buildDetailCtx constructs a minimal Ctx for a get-by-id drilldown from inside
