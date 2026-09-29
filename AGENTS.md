@@ -123,6 +123,8 @@ noun_variant: type      # → cobra command "kg:type"
 
 ### Mutable fields and update commands
 
+For custom field types, ordered `--set`/`--add`/`--del`, and sparse PATCH versus full PUT bodies, see [docs/mutation.md](docs/mutation.md). Read it before adding FME collection handlers or changing mutation specs.
+
 Fields with `mutable_path` are writable via `--set`/`--del` on update commands. `mutable_path` is a dot-path **relative to the `update_body_pick` subtree** — never starts with `it.`:
 
 ```yaml
@@ -139,6 +141,7 @@ update_body_wrap: project           # re-wraps the mutated object in PUT body
 
 Rules:
 - `update_body_pick` should match `yaml_pick_expr` on the corresponding `get` command — they describe the same subtree.
+- For get-then-PUT, pick the full resource subtree rather than enumerating today's fields: a positive field list can silently drop new API fields on PUT. PATCH may intentionally select only fields it sends.
 - Fields without `mutable_path` are read-only and do not appear in `--list-fields`.
 - `mutable_path` must not start with `it.` — the spec validator will reject it.
 
