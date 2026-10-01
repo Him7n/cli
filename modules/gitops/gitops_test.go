@@ -686,7 +686,7 @@ mappings:
 			wantErr: setArgOrg,
 		},
 		{
-			name: "file and set mutually exclusive",
+			name:    "file and set mutually exclusive",
 			setArgs: map[string]string{setArgArgoProject: "x"},
 			fileYAML: `
 mappings:
